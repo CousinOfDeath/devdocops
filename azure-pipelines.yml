@@ -1,0 +1,144 @@
+trigger:
+- main
+
+pool:
+  vmImage: ubuntu-latest
+
+variables:
+  - name: pipelineRepoName
+    value: "MyRepo name foo"
+  - name: pipelineLink
+    value: "www.google.com" 
+  - name: pipelineSomethingElse
+    value: "foo bar"
+  - name: organization
+    value: "https://dev.azure.com/myorganization"
+  - name: wikiName
+    value: mywiki
+  - name: projectName 
+    value: myproject
+
+steps:
+
+- checkout: self
+
+- task: AzureCLI@2
+  displayName: List wikis
+  inputs:
+    azureSubscription: "wikisc"
+    scriptType: bash
+    scriptLocation: inlineScript
+    inlineScript: |
+      echo $(PAT) | az devops login --organization $(organization)
+      az devops wiki list \
+        --organization $(organization) \
+        --project $(projectName)
+
+- task: AzureCLI@2
+  displayName: Show wikis
+  inputs:
+    azureSubscription: "wikisc"
+    scriptType: bash
+    scriptLocation: inlineScript
+    inlineScript: |
+      echo $(PAT) | az devops login --organization $(organization)
+      az devops wiki show \
+        --wiki $(wikiName) \
+        --organization $(organization) \
+        --project $(projectName)
+
+- task: AzureCLI@2
+  displayName: Create example wiki pages
+  inputs:
+    azureSubscription: "wikisc"
+    scriptType: bash
+    scriptLocation: inlineScript
+    inlineScript: |
+      echo $(PAT) | az devops login --organization $(organization)
+      
+      # echo Add new wiki page
+      # az devops wiki page create \
+      #   --path 'foo/bar' \
+      #   --wiki $(wikiName) \
+      #   --content "Hello World" \
+      #   --organization $(organization) \
+      #   --project $(projectName)
+
+      # echo Add new wiki page
+      # az devops wiki page create \
+      #   --path 'bar/foo' \
+      #   --wiki $(wikiName) \
+      #   --file-path README.md \
+      #   --encoding utf-8 \
+      #   --organization $(organization) \
+      #   --project $(projectName)
+
+- task: AzureCLI@2
+  displayName: Publish wiki pages
+  inputs:
+    azureSubscription: "wikisc"
+    scriptType: bash
+    scriptLocation: inlineScript
+    inlineScript: |
+      echo $(PAT) | az devops login --organization $(organization)
+
+      # Readme template
+      filename="releases.md"
+
+      # Possible tags
+      echo "Set possible tags"
+      repoName1="{repoName1}"
+      version1="{version1}"
+      link1="{link1}"
+      somethingElse1="{somethingElse1}"
+
+      # Replace repo name
+      if [[ "$(pipelineRepoName)" != "" ]]
+      then
+        sed -i "s/$repoName1/$(pipelineRepoName)/g" $filename
+      fi
+
+      # Replace version
+      if [[ "$(pipelineVersion)" != "" ]]
+      then
+        sed -i "s/$version1/$(pipelineVersion)/g" $filename
+      fi
+
+      # Replace link
+      if [[ "$(pipelineLink)" != "" ]]
+      then
+        sed -i "s/$link1/$(pipelineLink)/g" $filename
+      fi
+
+      # Replace something else name
+      if [[ "$(pipelineSomethingElse)" != "" ]]
+      then
+        sed -i "s/$somethingElse1/$(pipelineSomethingElse)/g" $filename
+      fi
+
+      # Check if page exists
+      eTagValue=$(az devops wiki page show --path 'releases/release-$(pipelineVersion)' --wiki $(wikiName) --project $(projectName) --query eTag --output tsv)
+      echo "release exists: $eTagValue"
+      
+      # Create release draft
+      if [[ $eTagValue == "" ]]; 
+        then
+          # Create new page
+          az devops wiki page create \
+            --path 'releases/release-$(pipelineVersion)' \
+            --wiki $(wikiName) \
+            --file-path $filename \
+            --encoding utf-8 \
+            --organization $(organization) \
+            --project $(projectName)
+        else
+        # Update page. TODO: Get eTag
+        az devops wiki page update \
+          --path 'releases/release-$(pipelineVersion)' \
+          --wiki $(wikiName) \
+          --file-path $filename \
+          --encoding utf-8 \
+          --organization $(organization) \
+          --version $eTagValue \
+          --project $(projectName)
+      fi
